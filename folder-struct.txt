@@ -1,0 +1,50 @@
+smart-watch/
+    data/                  # Data-related files
+        raw/               # Raw data (e.g., dummy videos, images for training)
+        processed/         # Processed data (e.g., extracted features, cleaned data)
+        models/            # Pre-trained or custom models
+        logs/              # Logs for training or testing
+    src/                   # Source code for the project
+        main.py            # Entry point for the system
+        modules/           # Modular components
+            detection/     # Event detection algorithms
+                trespass_detection.py
+                motion_tracking.py
+                utils.py   # Helper functions
+            notifications/ # Notification system
+                email.py
+                whatsapp.py
+                sms.py
+                push_notification.py
+            config/        # Configuration management
+                setup.py   # Message preference setup
+                loader.py  # Config loader
+    tests/                 # Testing scripts
+        unit/              # Unit tests for modules
+        integration/       # Integration tests
+        data_validation.py # Validating training/test data
+    notebooks/             # Jupyter/Colab notebooks for experiments
+        data_analysis.ipynb
+        model_training.ipynb
+        visualization.ipynb
+    deployment/            # Deployment-related files
+        docker/            # Docker setup
+            Dockerfile
+            docker-compose.yml
+        edge_device/       # Scripts for edge AI devices
+            edge_processing.py
+        requirements.txt   # Python dependencies
+    config/                # Global configuration files
+        camera_config.json # Camera setup details
+        system_config.json # System-wide configurations
+        notification_config.json # Notification preferences
+    docs/                  # Documentation
+        README.md          # Overview and instructions
+        INSTALL.md         # Installation guide
+        API.md             # API documentation for modules
+        CONTRIBUTING.md    # Contribution guidelines
+    results/               # Output results
+        detection/         # Event detection logs and outcomes
+        notifications/     # Notification logs
+        reports/           # Final reports for evaluation
+    .gitignore             # Git ignore file

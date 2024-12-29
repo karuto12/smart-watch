@@ -1,0 +1,67 @@
+{
+    "smart-watch": {
+        "data": {
+            "raw": {},
+            "processed": {},
+            "models": {},
+            "logs": {}
+        },
+        "src": {
+            "main.py": "",
+            "modules": {
+                "detection": {
+                    "trespass_detection.py": "",
+                    "motion_tracking.py": "",
+                    "utils.py": ""
+                },
+                "notifications": {
+                    "email.py": "",
+                    "whatsapp.py": "",
+                    "sms.py": "",
+                    "push_notification.py": ""
+                },
+                "config": {
+                    "setup.py": "",
+                    "loader.py": ""
+                }
+            }
+        },
+        "tests": {
+            "unit": {},
+            "integration": {},
+            "data_validation.py": ""
+        },
+        "notebooks": {
+            "data_analysis.ipynb": "",
+            "model_training.ipynb": "",
+            "visualization.ipynb": ""
+        },
+        "deployment": {
+            "docker": {
+                "Dockerfile": "",
+                "docker-compose.yml": ""
+            },
+            "edge_device": {
+                "edge_processing.py": ""
+            },
+            "requirements.txt": ""
+        },
+        "config": {
+            "camera_config.json": "",
+            "system_config.json": "",
+            "notification_config.json": ""
+        },
+        "docs": {
+            "README.md": "",
+            "INSTALL.md": "",
+            "API.md": "",
+            "CONTRIBUTING.md": ""
+        },
+        "results": {
+            "detection": {},
+            "notifications": {},
+            "reports": {}
+        },
+        ".gitignore": ""
+    }
+}
