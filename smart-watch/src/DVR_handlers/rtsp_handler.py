@@ -4,123 +4,162 @@ import numpy as np
 from datetime import datetime
 import threading
 
-class RTSPDvrHandler:
-    def __init__(self, rtsp_url, user_fps, duration, timeout=10, delay=5):
+
+class RTSPHandler:
+    def __init__(self, rtsp_urls, user_fps, duration, timeout=10, delay=5):
         """
-        Initialize the RTSP DVR handler with timeout for opening the RTSP stream.
-        
+        Initialize the RTSP DVR handler for multiple cameras.
+
         Args:
-            rtsp_url (str): The RTSP URL of the DVR.
+            rtsp_urls (list): List of RTSP URLs for each camera.
             user_fps (int): User-defined FPS for processing frames.
             duration (int): Duration (in seconds) to capture frames.
-            timeout (int): Maximum time (in seconds) to wait for VideoCapture to open.
+            timeout (int): Maximum time (in seconds) to wait for each RTSP stream.
+            delay (int): Delay in seconds to fetch data from the past.
         """
-        self.rtsp_url = rtsp_url
+        self.rtsp_urls = rtsp_urls
         self.user_fps = user_fps
         self.duration = duration
-        self.frames_to_read = self.user_fps * self.duration
-        self.cap = None
-        self.success = False
         self.timeout = timeout
         self.delay = delay
 
-        # Call _establish_connection to open VideoCapture and check if the URL is valid
-        self._establish_connection()
+        # Store connections and metadata for each camera
+        self.cameras = []
 
-    def _establish_connection(self):
-        """
-        Attempts to connect to the RTSP stream with a timeout. Runs the connection check in a separate thread.
-        """
-        self.open_thread = threading.Thread(target=self._open_capture)
-        self.open_thread.start()
+        # Establish connections for all cameras
+        for url in rtsp_urls:
+            self.cameras.append(self._initialize_camera(url))
 
-        # Wait for the thread to finish or timeout
-        self.open_thread.join(self.timeout)
-        if __name__ == "__main__":
-            # If unsuccessful, raise an error
-            if not self.success:
-                print(f"Error: Timeout after {self.timeout} seconds trying to connect to {self.rtsp_url}")
-                raise RuntimeError("Failed to open the RTSP stream within timeout.")
-            else:
-                self.camera_fps = self.cap.get(cv2.CAP_PROP_FPS)
-                print(f"Successfully connected to {self.rtsp_url} (FPS: {self.camera_fps})")
+    def _initialize_camera(self, rtsp_url):
+        """
+        Initialize a single RTSP camera connection with timeout.
         
-    def _open_capture(self):
-        """
-        Attempts to open the VideoCapture object in a separate thread. Sets the success flag to True if successful.
-        """
-        self.cap = cv2.VideoCapture(self.rtsp_url)
-        if self.cap.isOpened():
-            self.success = True
-            self.camera_fps = self.cap.get(cv2.CAP_PROP_FPS)
-            self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            self.rows = int(np.ceil(np.sqrt(self.frames_to_read)))  # Number of rows
-            self.cols = int(np.ceil(self.frames_to_read / self.rows))  # Number of columns
-            self.rframe_height = self.frame_height // self.rows
-            self.rframe_width = self.frame_width // self.cols
-    def convert_time(self, t, fmt=None):
-        """Convert Unix time to formatted time."""
-        if fmt:
-            start_datetime = datetime.fromtimestamp(t)
-            t = start_datetime.strftime(fmt)
-        return t
+        Args:
+            rtsp_url (str): RTSP URL for the camera.
 
-    def __str__(self):
-        return f"RTSPDvrHandler(rtsp_url={self.rtsp_url}, camera_fps={self.camera_fps}, duration={self.duration})"
+        Returns:
+            dict: A dictionary containing connection details for the camera.
+        """
+        camera_data = {
+            "url": rtsp_url,
+            "cap": None,
+            "success": False,
+            "camera_fps": None,
+            "frame_width": None,
+            "frame_height": None,
+        }
+
+        def _open_capture():
+            cap = cv2.VideoCapture(rtsp_url)
+            if cap.isOpened():
+                camera_data["success"] = True
+                camera_data["cap"] = cap
+                camera_data["camera_fps"] = cap.get(cv2.CAP_PROP_FPS)
+                camera_data["frame_width"] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                camera_data["frame_height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        # Use a thread to establish the connection with timeout
+        thread = threading.Thread(target=_open_capture)
+        thread.start()
+        thread.join(self.timeout)
+
+        if not camera_data["success"]:
+            print(f"Error: Timeout after {self.timeout} seconds for {rtsp_url}")
+        else:
+            print(f"Connected to {rtsp_url} (FPS: {camera_data['camera_fps']})")
+
+        return camera_data
 
     def test_connection(self):
-        return self.success
-
-    def retrieve_frames(self, start_time):
-        frames = []
-        frame_positions = list(map(int, np.linspace(int(start_time * self.camera_fps),
-                                                    int((start_time + self.duration) * self.camera_fps), 
-                                                    self.frames_to_read)))
-        for frame_pos in frame_positions:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
-            ret, frame = self.cap.read()
-            if not ret:
-                print(f"Warning: Failed to read frame at position {frame_pos}")
-                break
-            frame = cv2.resize(frame, (self.rframe_width, self.rframe_height))
-            frames.append(frame)
-
-        return frames
+        """
+        Test all camera connections.
+        
+        Returns:
+            list: A list of booleans indicating success for each camera.
+        """
+        return any([camera["success"] for camera in self.cameras])
 
     def process(self):
-        # Maintain a `duration` second delay
-        current_time = time.time()
-        start_time = current_time - self.duration -self.delay # Fetch `duration` seconds of data from 't' seconds ago
-        start_time = self.convert_time(start_time)
-        frames = self.retrieve_frames(start_time)
+        """
+        Process all cameras and return aggregated results for each.
 
-        if frames:
-            aggregated_image = self.aggregate_frames(frames)
-            return aggregated_image
-        else:
-            print("Error: No frames retrieved.")
-            return None
+        Returns:
+            dict: A dictionary mapping each RTSP URL to its aggregated frame image.
+        """
+        results = {}
+        for camera in self.cameras:
+            if camera["success"]:
+                cap = camera["cap"]
+                camera_fps = camera["camera_fps"]
+                frame_width = camera["frame_width"]
+                frame_height = camera["frame_height"]
 
-    def aggregate_frames(self, frames):
-        if len(frames) == 0:
-            return None
+                start_time = time.time() - self.duration - self.delay
+                frame_positions = list(
+                    map(
+                        int,
+                        np.linspace(
+                            int(start_time * camera_fps),
+                            int((start_time + self.duration) * camera_fps),
+                            self.user_fps * self.duration,
+                        ),
+                    )
+                )
 
-        # Initialize a blank image of the same size as the original frames
-        nimg = np.zeros((self.frame_height, self.frame_width, 3), dtype=np.uint8)
+                frames = []
+                for frame_pos in frame_positions:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
+                    ret, frame = cap.read()
+                    if not ret:
+                        print(f"Warning: Failed to read frame at position {frame_pos} for {camera['url']}")
+                        break
+                    frames.append(frame)
+
+                # Aggregate frames into a single image
+                if frames:
+                    results[camera["url"]] = self._aggregate_frames(frames, frame_width, frame_height)
+                else:
+                    results[camera["url"]] = None
+            else:
+                results[camera["url"]] = None
+
+        return results
+
+    def _aggregate_frames(self, frames, frame_width, frame_height):
+        """
+        Aggregate multiple frames into a single grid image.
+        
+        Args:
+            frames (list): List of frames.
+            frame_width (int): Width of a single frame.
+            frame_height (int): Height of a single frame.
+
+        Returns:
+            np.ndarray: Aggregated image.
+        """
+        rows = int(np.ceil(np.sqrt(len(frames))))  # Number of rows
+        cols = int(np.ceil(len(frames) / rows))    # Number of columns
+
+        rframe_height = frame_height // rows
+        rframe_width = frame_width // cols
+
+        # Initialize a blank image
+        nimg = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
         for idx, frame in enumerate(frames):
-            row = idx // self.cols
-            col = idx % self.cols
-            # Place the resized frame in the grid
+            row = idx // cols
+            col = idx % cols
+            resized_frame = cv2.resize(frame, (rframe_width, rframe_height))
             nimg[
-                row * self.rframe_height : (row + 1) * self.rframe_height,
-                col * self.rframe_width : (col + 1) * self.rframe_width,
-            ] = frame
+                row * rframe_height : (row + 1) * rframe_height,
+                col * rframe_width : (col + 1) * rframe_width,
+            ] = resized_frame
 
         return nimg
 
     def close(self):
-        self.cap.release()
-
-
-
+        """
+        Close all camera connections.
+        """
+        for camera in self.cameras:
+            if camera["cap"]:
+                camera["cap"].release()

@@ -4,13 +4,11 @@ import time
 import numpy as np
 from datetime import datetime
 import threading
-import requests
-from requests.exceptions import ConnectionError
 
-class ONVIFDvrHandler:
+class ONVIFHandler:
     def __init__(self, ip, port, username, password, user_fps, duration, timeout=10, delay=5):
         """
-        Initialize the ONVIF DVR handler with timeout for opening the RTSP stream.
+        Initialize the ONVIF DVR handler with support for multiple cameras.
 
         Args:
             ip (str): The IP address of the DVR.
@@ -20,6 +18,7 @@ class ONVIFDvrHandler:
             user_fps (int): User-defined FPS for processing frames.
             duration (int): Duration (in seconds) to capture frames.
             timeout (int): Maximum time (in seconds) to wait for VideoCapture to open.
+            delay (int): Delay (in seconds) before fetching frames.
         """
         self.ip = ip
         self.port = port
@@ -27,164 +26,183 @@ class ONVIFDvrHandler:
         self.password = password
         self.user_fps = user_fps
         self.duration = duration
-        self.frames_to_read = self.user_fps * self.duration
         self.timeout = timeout
         self.delay = delay
+        self.frames_to_read = self.user_fps * self.duration
 
-        self.rtsp_url = None
-        self.cap = None
-        self.success = False
-
-        # ONVIF Integration
-        self.camera = None
-        self.media_service = None
-
-        # Attempt to initialize the camera and retrieve RTSP URL
-        self._initialize_camera()
-
-        if self.camera:
-            # Establish connection and open VideoCapture
-            self._establish_connection()
-        else: ...
-            # print("Failed to initialize camera, skipping connection test.")
+        self.successes = []
+        self.cameras = {}  # Store camera-specific details (profile, cap, dimensions, etc.)
+        self._initialize_camera()  # Discover ONVIF profiles and prepare for processing
 
     def _initialize_camera(self):
         """
-        Tries to initialize the ONVIF camera and handle connection issues.
+        Initialize the ONVIF camera, retrieve profiles, and calculate parameters for each.
         """
         try:
             self.camera = ONVIFCamera(self.ip, self.port, self.username, self.password)
             self.media_service = self.camera.create_media_service()
-            self._retrieve_rtsp_url()
-        except Exception as e:
-            # print(f"Error initializing camera: {e}")
-            self.camera = None
-            self.media_service = None
+            profiles = self.media_service.GetProfiles()
+            self.success = [False] * len(profiles)
+            for i, profile in enumerate(profiles):
+                rtsp_url = self._retrieve_rtsp_url(profile)
+                if rtsp_url:
+                    cap = cv2.VideoCapture(rtsp_url)
+                    if not cap.isOpened():
+                        print(f"Failed to connect to camera profile: {profile.name}")
+                        continue
+                    self.successes[i] = True
 
-    def _retrieve_rtsp_url(self):
+                    camera_fps = cap.get(cv2.CAP_PROP_FPS)
+                    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    rows = int(np.ceil(np.sqrt(self.frames_to_read)))  # Grid rows
+                    cols = int(np.ceil(self.frames_to_read / rows))  # Grid cols
+                    rframe_height = frame_height // rows
+                    rframe_width = frame_width // cols
+
+                    # Store camera-specific parameters
+                    self.cameras[profile.name] = {
+                        "profile": profile,
+                        "rtsp_url": rtsp_url,
+                        "cap": cap,
+                        "camera_fps": camera_fps,
+                        "frame_width": frame_width,
+                        "frame_height": frame_height,
+                        "rows": rows,
+                        "cols": cols,
+                        "rframe_height": rframe_height,
+                        "rframe_width": rframe_width,
+                    }
+                else:
+                    print(f"Skipping profile {profile.name} due to missing RTSP URL.")
+        except Exception as e:
+            print(f"Error initializing ONVIF cameras: {e}")
+
+    def _retrieve_rtsp_url(self, profile):
         """
-        Retrieve the RTSP URL using the ONVIF Media service.
+        Retrieve the RTSP URL for a specific profile.
+
+        Args:
+            profile: ONVIF camera profile object.
+        Returns:
+            str: RTSP URL or None if retrieval fails.
         """
         try:
-            if self.media_service:
-                profiles = self.media_service.GetProfiles()
-                if profiles:
-                    # Fetch the first profile's stream URI
-                    token = profiles[0].token
-                    stream_uri = self.media_service.GetStreamUri({
-                        'StreamSetup': {'Stream': 'RTP-Unicast', 'Transport': {'Protocol': 'RTSP'}},
-                        'ProfileToken': token
-                    })
-                    self.rtsp_url = stream_uri['Uri']
-                    print(f"Retrieved RTSP URL: {self.rtsp_url}")
-                else:
-                    raise RuntimeError("No ONVIF profiles available.")
-            else:
-                raise RuntimeError("Media service not available.")
+            stream_uri = self.media_service.GetStreamUri({
+                'StreamSetup': {'Stream': 'RTP-Unicast', 'Transport': {'Protocol': 'RTSP'}},
+                'ProfileToken': profile.token
+            })
+            return stream_uri['Uri']
         except Exception as e:
-            print(f"Error retrieving RTSP URL: {e}")
-
-    def _establish_connection(self):
-        """
-        Attempts to connect to the RTSP stream with a timeout. Runs the connection check in a separate thread.
-        """
-        if self.rtsp_url:
-            self.open_thread = threading.Thread(target=self._open_capture)
-            self.open_thread.start()
-
-            # Wait for the thread to finish or timeout
-            self.open_thread.join(self.timeout)
-            if __name__ == "__main__":
-                if not self.success:
-                    print(f"Warning: Timeout after {self.timeout} seconds trying to connect to {self.rtsp_url}")
-                    self.success = False  # Mark as unsuccessful but don't raise an error
-                else:
-                    self.camera_fps = self.cap.get(cv2.CAP_PROP_FPS)
-                    print(f"Successfully connected to {self.rtsp_url} (FPS: {self.camera_fps})")
-
-
-    def _open_capture(self):
-        """
-        Attempts to open the VideoCapture object in a separate thread. Sets the success flag to True if successful.
-        """
-        try:
-            self.cap = cv2.VideoCapture(self.rtsp_url)
-            if self.cap.isOpened():
-                self.success = True
-                self.camera_fps = self.cap.get(cv2.CAP_PROP_FPS)
-                self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                self.rows = int(np.ceil(np.sqrt(self.frames_to_read)))  # Number of rows
-                self.cols = int(np.ceil(self.frames_to_read / self.rows))  # Number of columns
-                self.rframe_height = self.frame_height // self.rows
-                self.rframe_width = self.frame_width // self.cols
-        except Exception as e:
-            # print(f"Error opening RTSP stream: {e}")
-            self.success = False
-
-    def convert_time(self, t, fmt=None):
-        """Convert Unix time to formatted time."""
-        if fmt:
-            start_datetime = datetime.fromtimestamp(t)
-            t = start_datetime.strftime(fmt)
-        return t
-
-    def __str__(self):
-        return f"ONVIFDvrHandler(rtsp_url={self.rtsp_url}, camera_fps={self.camera_fps}, duration={self.duration})"
-
-    def test_connection(self):
-        return self.success
-
-    def retrieve_frames(self, start_time):
-        frames = []
-        frame_positions = list(map(int, np.linspace(int(start_time * self.camera_fps),
-                                                    int((start_time + self.duration) * self.camera_fps), 
-                                                    self.frames_to_read)))
-        for frame_pos in frame_positions:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
-            ret, frame = self.cap.read()
-            if not ret:
-                print(f"Warning: Failed to read frame at position {frame_pos}")
-                break
-            frame = cv2.resize(frame, (self.rframe_width, self.rframe_height))
-            frames.append(frame)
-
-        return frames
+            print(f"Error retrieving RTSP URL for profile {profile.name}: {e}")
+            return None
 
     def process(self):
-        # Maintain a `duration` second delay
-        current_time = time.time()
-        start_time = current_time - self.duration - self.delay  # Fetch `duration` seconds of data from 't' seconds ago
-        start_time = self.convert_time(start_time)
-        frames = self.retrieve_frames(start_time)
+        """
+        Process all cameras in the DVR, fetching frames for each, and return results.
 
-        if frames:
-            aggregated_image = self.aggregate_frames(frames)
-            return aggregated_image
-        else:
-            print("Error: No frames retrieved.")
+        Returns:
+            dict: A dictionary where keys are camera names and values are aggregated images or None.
+        """
+        results = {}
+        for camera_name, camera_details in self.cameras.items():
+            print(f"Processing camera: {camera_name}")
+            results[camera_name] = self._process_camera(camera_name, camera_details)
+
+        return results
+
+    def _process_camera(self, camera_name, camera_details):
+        """
+        Process frames from a single camera.
+
+        Args:
+            camera_details (dict): Details about the camera (e.g., cap, frame dimensions).
+        Returns:
+            Aggregated image or None if processing fails.
+        """
+        try:
+            cap = camera_details["cap"]
+            camera_fps = camera_details["camera_fps"]
+            rows = camera_details["rows"]
+            cols = camera_details["cols"]
+            rframe_width = camera_details["rframe_width"]
+            rframe_height = camera_details["rframe_height"]
+
+            current_time = time.time()
+            start_time = current_time - self.duration - self.delay  # Fetch `duration` seconds of data from `delay` seconds ago
+            start_frame_index = int(start_time * camera_fps)
+            frames = []
+
+            frame_positions = list(map(
+                int,
+                np.linspace(start_frame_index, start_frame_index + self.frames_to_read, self.frames_to_read)
+            ))
+
+            for frame_pos in frame_positions:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
+                ret, frame = cap.read()
+                if not ret:
+                    print(f"Warning: Failed to read frame at position {frame_pos}")
+                    break
+                frame = cv2.resize(frame, (rframe_width, rframe_height))
+                frames.append(frame)
+
+            # Aggregate frames into a grid image
+            if frames:
+                return self._aggregate_frames(frames, camera_details)
+            else:
+                print(f"No frames retrieved for camera: {camera_name}")
+                return None
+
+        except Exception as e:
+            print(f"Error processing camera {camera_name}: {e}")
             return None
 
-    def aggregate_frames(self, frames):
-        if len(frames) == 0:
+    def _aggregate_frames(self, frames, camera_details):
+        """
+        Aggregate frames into a single grid image.
+
+        Args:
+            frames: List of frames to aggregate.
+            camera_details: Camera-specific details (e.g., dimensions, rows, cols).
+        Returns:
+            Aggregated grid image or None if frames are empty.
+        """
+        if not frames:
             return None
 
-        # Initialize a blank image of the same size as the original frames
-        nimg = np.zeros((self.frame_height, self.frame_width, 3), dtype=np.uint8)
+        frame_width = camera_details["frame_width"]
+        frame_height = camera_details["frame_height"]
+        rows = camera_details["rows"]
+        cols = camera_details["cols"]
+        rframe_width = camera_details["rframe_width"]
+        rframe_height = camera_details["rframe_height"]
+
+        grid_image = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
         for idx, frame in enumerate(frames):
-            row = idx // self.cols
-            col = idx % self.cols
-            # Place the resized frame in the grid
-            nimg[
-                row * self.rframe_height : (row + 1) * self.rframe_height,
-                col * self.rframe_width : (col + 1) * self.rframe_width,
+            row = idx // cols
+            col = idx % cols
+            grid_image[
+                row * rframe_height : (row + 1) * rframe_height,
+                col * rframe_width : (col + 1) * rframe_width
             ] = frame
 
-        return nimg
+        return grid_image
 
     def close(self):
-        if self.cap:
-            self.cap.release()
+        """
+        Release all VideoCapture objects.
+        """
+        for camera_name, camera_details in self.cameras.items():
+            if camera_details["cap"]:
+                camera_details["cap"].release()
+                print(f"Released VideoCapture for camera: {camera_name}")
 
+    def test_connection(self):
+        """
+        Test the connection to the ONVIF camera.
 
-
+        Returns:
+            bool: True if the connection is successful, False otherwise.
+        """
+        return any(self.successes)
