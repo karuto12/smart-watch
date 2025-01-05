@@ -19,6 +19,13 @@ smart-watch/
             config/        # Configuration management
                 setup.py   # Message preference setup
                 loader.py  # Config loader
+        DVR_handlers/
+            rtsp_handler.py
+            onvif_handler.py
+            proprietary_handler.py
+            web_handler.py
+            analog_handler.py
+            hybrid_handler.py
     tests/                 # Testing scripts
         unit/              # Unit tests for modules
         integration/       # Integration tests

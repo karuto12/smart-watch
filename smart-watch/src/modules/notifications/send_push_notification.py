@@ -84,7 +84,7 @@ def setup_push_notification_details(server_key, device_tokens):
 if __name__ == "__main__":
     # Load configuration or ask user for setup
     push_config = load_config().get('setup-details', {}).get('PushNotification', {})
-    bePolite = input("Press (y) if you want to change the push notification details else press whatever: ")
+    bePolite = '' #input("Press (y) if you want to change the push notification details else press whatever: ")
     if not push_config or bePolite == 'y':
         print("\n\nPerhaps this is your first time using the push notification sender! Please fill the details.\n\n")
         server_key = input("Enter your FCM Server Key: ").strip()
@@ -96,11 +96,11 @@ if __name__ == "__main__":
         device_tokens = push_config['device_tokens']
 
     # Collect notification details
-    title = input("Enter the title of the notification: ").strip()
-    message = input("Enter the message content of the notification: ").strip()
+    title = 'Test MSG' #input("Enter the title of the notification: ").strip()
+    message = "This is a test msg" #input("Enter the message content of the notification: ").strip()
 
     # Optional data payload
-    data_input = input("Enter any additional data payload (JSON format, or leave blank): ").strip()
+    data_input = '' #input("Enter any additional data payload (JSON format, or leave blank): ").strip()
     data = json.loads(data_input) if data_input else {}
 
     # Send push notification
@@ -109,3 +109,7 @@ if __name__ == "__main__":
         print("Push notification sent successfully!")
     else:
         print("Failed to send the push notification.")
+
+
+# fLveGF8RTpm42SDzO33EIt:APA91bFIm6vZLJ60hAZg9kL_ItF3KprR_V84jGH2ZSccGLag4Pph1ROBl9T9tpPOk6PvX4ZdHWQ9XPUNDFUGy4ANYs4d9V5Uo7GdHgSokn-0E-TU2Pv5Org
+# 1:282231969284:android:0cec8df1f89115bd844751

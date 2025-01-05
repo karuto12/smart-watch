@@ -28,6 +28,9 @@
             "from_phone_number": "",
             "to_phone_number": ""
         },
-        "PushNotification": {}
+        "PushNotification": {
+            "server_key": "",
+            "device_tokens": []
+        }
     }
 }
