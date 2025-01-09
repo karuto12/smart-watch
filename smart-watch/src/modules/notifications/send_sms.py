@@ -59,7 +59,18 @@ def save_config(config):
         json.dump(config, file, indent=4)
     logger.info(f"Configuration saved to {CONFIG_FILE}.")
 
-
+def init():
+    global sms_config
+    sms_config = load_config(CONFIG_FILE).get('setup-details', {}).get('SMS', {})
+    
+def send(msg):
+    global sms_config
+    account_sid = sms_config['account_sid']
+    auth_token = sms_config['auth_token']
+    from_phone_number = sms_config['from_phone_number']
+    to_phone_number = sms_config['to_phone_number']
+    msg = f'{msg['title']} \n{msg['body']}'
+    return send_sms(account_sid, auth_token, from_phone_number, to_phone_number, msg)
 def setup_sms_details(account_sid, auth_token, from_phone_number, to_phone_number):
     """Setup SMS details in the configuration file."""
     config = load_config()
@@ -97,3 +108,6 @@ if __name__ == "__main__":
         print("Message sent successfully!")
     else:
         print("Failed to send the message.")
+
+
+sms_config = load_config(CONFIG_FILE).get('setup-details', {}).get('SMS', {})

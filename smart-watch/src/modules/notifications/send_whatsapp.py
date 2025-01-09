@@ -69,6 +69,20 @@ def setup_whatsapp_details(account_sid, auth_token, from_whatsapp_number, to_wha
     }
     save_config(config)
 
+def init():
+    global whatsapp_config
+    whatsapp_config = load_config().get('setup-details', {}).get('WhatsApp', {})
+
+def send(msg):
+    global whatsapp_config
+    account_sid = whatsapp_config['account_sid']
+    auth_token = whatsapp_config['auth_token']
+    from_whatsapp_number = whatsapp_config['from_whatsapp_number']
+    to_whatsapp_number = whatsapp_config['to_whatsapp_number']
+    msg = f'{msg['title']} \n{msg['body']}'
+    # Send WhatsApp message
+    return send_whatsapp_message(account_sid, auth_token, from_whatsapp_number, to_whatsapp_number, msg)
+
 if __name__ == "__main__":
     # Input credentials and message details
     whatsapp_config = load_config().get('setup-details', {}).get('WhatsApp', {})

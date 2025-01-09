@@ -80,7 +80,7 @@ def save_config(config):
     logger.info(f"Configuration saved to {CONFIG_FILE}.")
 
 
-def setup_email_details(smtp_server, port, sender_email, sender_password, recipient_email, cc=None, bcc=None):
+def save_email_details(smtp_server, port, sender_email, sender_password, recipient_email, cc=None, bcc=None):
     """Setup email details in the configuration file."""
     config = load_config()
     config['setup-details']['Email'] = {
@@ -94,13 +94,43 @@ def setup_email_details(smtp_server, port, sender_email, sender_password, recipi
     }
     save_config(config)
 
+def init():
+    global email_config
+    email_config = load_config().get('setup-details', {}).get('Email', {})
+
+def send(msg):
+    global email_config
+    smtp_server = email_config['smtp_server']
+    port = email_config['port']
+    sender_email = email_config['sender_email']
+    sender_password = email_config['sender_password']
+    recipient_email = email_config['recipient_email']
+    cc = email_config.get('cc', [])
+    bcc = email_config.get('bcc', [])
+    subject = msg['title']
+    message = msg['body']
+
+    # Send the email
+    return send_email(smtp_server, port, sender_email, sender_password, recipient_email, subject, message, cc, bcc)
+
+def setup():
+    print("\n\nIf this is first time for Email Set-Up, you need to setup 2 step verification (2SV), then copy the 'App Passwords'.\n\n")
+    smtp_server = input("Enter the SMTP server address (e.g., 'smtp.gmail.com'): ").strip()
+    port = int(input("Enter the SMTP server port (e.g., 587 for TLS): ").strip())
+    sender_email = input("Enter your email address: ").strip()
+    sender_password = input("Enter your email password or app password: ").strip()
+    recipient_email = input("Enter the recipient's email address: ").strip()
+    cc = input("Enter the CC email addresses (comma separated): ").strip().split(',')
+    bcc = input("Enter the BCC email addresses (comma separated): ").strip().split(',')
+    save_email_details(smtp_server, port, sender_email, sender_password, recipient_email, cc, bcc)
+    print("Email Configured Successfully")
 
 if __name__ == "__main__":
     # Input credentials and email details
     email_config = load_config().get('setup-details', {}).get('Email', {})
     bePolite = input("Press (y) if you want to change the details else press whatever: ")
     if not email_config or bePolite == 'y':
-        print("\n\nIf this is first time you need to setup 2 step verification (2SV) then copy the App Passwords.\n\n")
+        print("\n\nIf this is first time for Email Set-Up, you need to setup 2 step verification (2SV), then copy the 'App Passwords'.\n\n")
         smtp_server = input("Enter the SMTP server address (e.g., 'smtp.gmail.com'): ").strip()
         port = int(input("Enter the SMTP server port (e.g., 587 for TLS): ").strip())
         sender_email = input("Enter your email address: ").strip()
@@ -108,7 +138,7 @@ if __name__ == "__main__":
         recipient_email = input("Enter the recipient's email address: ").strip()
         cc = input("Enter the CC email addresses (comma separated): ").strip().split(',')
         bcc = input("Enter the BCC email addresses (comma separated): ").strip().split(',')
-        setup_email_details(smtp_server, port, sender_email, sender_password, recipient_email, cc, bcc)
+        save_email_details(smtp_server, port, sender_email, sender_password, recipient_email, cc, bcc)
     else:
         smtp_server = email_config['smtp_server']
         port = email_config['port']

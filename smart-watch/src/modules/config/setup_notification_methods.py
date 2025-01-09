@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from src.modules.notifications import send_email, send_push_notification, send_sms, send_whatsapp
 
 PATH2THIS = "./smart-watch/src/modules/config/setup.py"
 PATH2LOG = "./smart-watch/data/logs/notific-mode-setup.log"
@@ -10,6 +11,13 @@ logging.basicConfig(level=logging.INFO,
 )
 logger = logging.getLogger(os.path.basename(PATH2THIS))
 logger.info(f"THE MSGS ARE FROM {PATH2THIS}")
+METHODS = {
+    'WhatsApp': send_whatsapp,
+    'PushNotification': send_push_notification,
+    'Email': send_email,
+    'SMS': send_sms
+}
+
 
 # Define the configuration file path
 CONFIG_FILE = "./smart-watch/config/notification_config.json"
@@ -29,14 +37,14 @@ def save_config(config):
 
 def add_notification_methods(available_methods=["WhatsApp", "Email", "SMS", "PushNotification"]):
     """Allow the user to set up notification methods."""
-
+    
     print("Available methods for receiving messages:")
     for i, method in enumerate(available_methods, start=1):
         print(f"{i}. {method}")
 
     selected_methods = []
     try:
-        choice = input("Enter the number of the methods to enable (comma seperated): ").strip().split(',')
+        choice = input("Enter the index of the methods to enable (comma seperated): ").strip().split(',')
         if choice:
             choice = list(map(lambda x: int(x)-1, choice))
         for i in choice:
@@ -74,6 +82,13 @@ def main():
         save_config(config)
     else:
         print("No changes made.")
+    
+    print('\n\n----------------------------------------------------------------\n')
+    print('Set Up Notification Methods:')
+    selected_methods = load_config().get('selected-methods')
+    for sm in selected_methods:
+        METHODS[sm].setup()
+
 
 if __name__ == "__main__":
     main()

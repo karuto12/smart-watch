@@ -1,8 +1,8 @@
 import cv2
 import time
 import numpy as np
-from datetime import datetime
 import threading
+# from datetime import datetime
 
 
 class RTSPHandler:
@@ -54,7 +54,7 @@ class RTSPHandler:
             if cap.isOpened():
                 camera_data["success"] = True
                 camera_data["cap"] = cap
-                camera_data["camera_fps"] = cap.get(cv2.CAP_PROP_FPS)
+                camera_data["camera_fps"] = int(cap.get(cv2.CAP_PROP_FPS))
                 camera_data["frame_width"] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 camera_data["frame_height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
@@ -79,7 +79,7 @@ class RTSPHandler:
         """
         return any([camera["success"] for camera in self.cameras])
 
-    def process(self):
+    def aggregated_images(self):
         """
         Process all cameras and return aggregated results for each.
 
@@ -163,3 +163,19 @@ class RTSPHandler:
         for camera in self.cameras:
             if camera["cap"]:
                 camera["cap"].release()
+
+    def video(self):
+        """
+        Generate a live video feed for all cameras.
+        """
+        results = {}
+        for camera in self.cameras:
+            if camera["success"]:
+                cap = camera["cap"]
+                ret, frame = cap.read()
+                if not ret:
+                    print(f"Warning: Failed to read frame for {camera['url']}")
+                    continue
+                results[camera["url"]] = frame
+        return results
+                

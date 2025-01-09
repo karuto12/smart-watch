@@ -1,11 +1,14 @@
 from torchvision import transforms, models
 from torch import stack, nn
 import torch
+from os.path import abspath
 
-# To download the pretrained model
+# To download the pretrained weights
 # from torchvision.models import resnet101, ResNet101_Weights
 # model = resnet101(weights=ResNet101_Weights.IMAGENET1K_V2)
 
+model_save_path = r"smart-watch\smart-watch\data\models\misbehavior_classifier.pth"
+model_save_path = abspath(model_save_path)
 
 def preprocess_images(images):
     transform = transforms.Compose([
@@ -24,7 +27,7 @@ def preprocess_images(images):
     # Stack all images into a single batch
     return stack(image_tensors)
 
-def load_model(model_path):
+def load_model(model_path=model_save_path):
     # Define the model architecture (same as used for training)
     model = models.resnet101(pretrained=False)  # ResNet-101, no pre-trained weights
     num_features = model.fc.in_features

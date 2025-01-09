@@ -206,3 +206,18 @@ class ONVIFHandler:
             bool: True if the connection is successful, False otherwise.
         """
         return any(self.successes)
+    
+    def video(self):
+        """
+        Generate a live video feed for all cameras.
+        """
+        results = {}
+        for camera_name, camera_details in self.cameras.items():
+            if camera_details["cap"]:
+                cap = camera_details["cap"]
+                ret, frame = cap.read()
+                if not ret:
+                    print(f"Warning: Failed to read frame for {camera_name}")
+                    continue
+                results[camera_name] = frame
+        return results

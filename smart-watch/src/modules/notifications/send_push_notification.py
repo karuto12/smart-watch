@@ -80,11 +80,25 @@ def setup_push_notification_details(server_key, device_tokens):
     }
     save_config(config)
 
+def init():
+    global push_config
+    push_config = load_config().get('setup-details', {}).get('PushNotification', {})
+
+
+def send(msg):
+    global push_config
+    server_key = push_config['server_key']
+    device_tokens = push_config['device_tokens']
+    title = msg.get('title', 'Smart-Watch').strip()
+    message = msg.get('message', 'Warning: There might be some error in msg formatting').strip()
+    data = msg.get('data', {})
+    response = send_push_notification(server_key, device_tokens, title, message, data)
+    return response
 
 if __name__ == "__main__":
     # Load configuration or ask user for setup
     push_config = load_config().get('setup-details', {}).get('PushNotification', {})
-    bePolite = '' #input("Press (y) if you want to change the push notification details else press whatever: ")
+    bePolite = input("Press (y) if you want to change the push notification details else press whatever: ")
     if not push_config or bePolite == 'y':
         print("\n\nPerhaps this is your first time using the push notification sender! Please fill the details.\n\n")
         server_key = input("Enter your FCM Server Key: ").strip()
@@ -111,5 +125,3 @@ if __name__ == "__main__":
         print("Failed to send the push notification.")
 
 
-# fLveGF8RTpm42SDzO33EIt:APA91bFIm6vZLJ60hAZg9kL_ItF3KprR_V84jGH2ZSccGLag4Pph1ROBl9T9tpPOk6PvX4ZdHWQ9XPUNDFUGy4ANYs4d9V5Uo7GdHgSokn-0E-TU2Pv5Org
-# 1:282231969284:android:0cec8df1f89115bd844751
