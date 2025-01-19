@@ -1,6 +1,6 @@
 import cv2
 
-_detectShadows = True
+_detectShadows = False
 _varThreshold = 25
 _history = 300
 _thresh = 200

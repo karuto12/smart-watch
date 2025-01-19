@@ -94,7 +94,7 @@ class RTSPHandler:
                 frame_width = camera["frame_width"]
                 frame_height = camera["frame_height"]
 
-                start_time = time.time() - self.duration - self.delay
+                start_time = self.duration # time.time() - self.duration - self.delay
                 frame_positions = list(
                     map(
                         int,
