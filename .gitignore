@@ -1,13 +1,5 @@
-create -folderstruct.py
-
-# Ignore personal test files
-t[0-9]*.py
-t[0-9]*.ipynb
-
-# Ignore virtual environments
-.smart_watch_env
-
-
-# Ignore personal test folder
-tests
-t1
+*.mp4
+.env
+yolov8n.pt
+*.c
+*.exe
