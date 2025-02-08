@@ -1,184 +1,49 @@
-# *Comprehensive Project Plan: Enhancing School Safety and Security*
+# Trespassing Detection System
 
-## *Objective*
-Develop a comprehensive system that utilises multiple camera feeds to detect and notify
- school authorities of significant unwanted and unusual behaviour occurring on school
- premises, enhancing safety and security through real-time monitoring and alerting
+## Overview
 
----
+This project implements a real-time trespassing detection system using OpenCV, YOLOv8, and motion detection. It analyzes video frames for motion and then applies YOLOv8 object detection to identify humans. If a human trespasser is detected, an alert email is sent.
 
-## *Project Components and Workflow*
+## Components Used
 
-### *1. Frame Aggregation*
-#### *Objective*
-Capture and aggregate multiple frames from each camera feed into a single image that summarizes motion during a specific time window.
+- **OpenCV**: For video processing and motion detection
+- **YOLOv8 (Nano)**: Lightweight deep-learning model for object detection
+- **SMTP**: Used for sending email alerts
 
-#### *Implementation Details*
-- *Input*:
-  - Camera feeds from a camera connected via a DVR.
-  - User-defined parameters: fps (frames per second) and duration (in seconds).
+## Process Flow
 
-- *Process*:
-  - Frames are extracted from each camera feed at the specified fps.
-  - Frames are resized and combined into a grid structure using a modular * RTSHandler and onvif_handler*  class.
-  - The combined image effectively captures motion from the camera feed for the specified time window.
-  - DVR Feed Configuration and Processing Workflow:
-  ```
-  - Configure the DVR with a duration and delay to retrieve feeds starting from duration + delay seconds behind real-time.  
-  - Aggregate frames into a single image using duration and user_fps.  
-  - Maintain a consistent delay to prevent conflicts with DVR recordings.  
-  - Adjust the delay to match processing time (aggregation, inference, output) to stay synchronized.  
-  - Ensure seamless integration of DVR feeds with the behavior detection system.
-  ```
-    
-- *Output*:
-  - A single aggregated image ready for behavior analysis.
+1. **Video Capture**: The system reads frames from the video feed.
 
-  ![alt text](<Demo 1.jpg>)
-  
-
-#### *Tools*
-- OpenCV for frame extraction and resizing.
-- Python's threading to ensure parallel frame extraction from all cameras.
-
----
-
-### *2. Behavior Analysis Model*
-#### *Objective*
-Analyze the aggregated image and assign a behavior score between 0 (normal) and 4 (severe misconduct).
-
-#### *Implementation Details*
-- *Input*:
-  - Aggregated image from the Frame Aggregator.
-- *Process*:
-  - A machine learning model is trained on ethically sourced data to detect behavior patterns.
-  - The model predicts a score based on the severity of behavior observed in the image.
-- *Output*:
-  - Behavior score (0-4).
-  - Behavior category for interpretation (e.g., "Normal", "Minor Misconduct", "Severe Misconduct").
-
-#### *Tools*
--  PyTorch for model training and inference.
--  A machine learning model (Resnet101) to classify image.
-
----
-
-### *3. Trespassing Detection*
-#### *Objective*
-Detect unauthorized motion on the premises after school hours to prevent trespassing incidents.
-
-#### *Implementation Details*
-- #### **Input**:
-  - Live camera feeds during non-operational hours.
-- #### **Process**:
-    #### *Background Subtraction*
-    - The script uses cv2.createBackgroundSubtractorMOG2 to differentiate moving objects (foreground) from the static background in video frames.
-    - Parameters like _detectShadows, _varThreshold, and _history are tuned to account for environmental changes such as lighting variations while maintaining detection accuracy.
-
-    #### *Noise Reduction*
-    - The foreground mask is processed using cv2.morphologyEx with the cv2.MORPH_CLOSE operation.
-    - This step removes small holes and fills gaps in the detected motion areas, ensuring a cleaner mask.
-
-    #### *Binary Thresholding*
-    - cv2.threshold converts the processed foreground mask into a binary image, highlighting moving regions with pixel values of 255 and suppressing the rest to 0.
-
-    #### *Contour Detection*
-    - The script uses cv2.findContours to identify the boundaries of detected motion regions in the binary mask.
-
-    #### *Motion Validation*
-    - For each contour, the largest one is selected using max(contours, key=cv2.contourArea).
-    - If the contour area exceeds _countourThreshold, it is considered valid motion, indicating potential trespassing.
-
-    #### *Visual Feedback*
-    - A bounding box is drawn around the detected motion using cv2.rectangle.
-    - "Motion Detected" is printed to the console for real-time feedback.
-
-    #### *Multi-Camera Support*
-    - The function get_motions processes frames from multiple video streams simultaneously.
-    - It returns a dictionary with the motion detection status (True or False) for each camera.
-
-- *Output*:
-   - Real-time notification sent to authorities.
-
-   ![alt text](<Demo 2 Output.jpg>)
-
-#### *Tools*
-- OpenCV for motion detection.
-- Custom rules for time-based operation (only active after school hours).
-
----
-
-### *4. Notification System*
-#### *Objective*
-Notify relevant authorities in real-time about trespassing or unacceptable behavior.
-
-#### *Implementation Details*
-- *Input*:
-  - Alerts generated by the Behavior Analysis Model or Trespassing Detection Module.
-- *Process*:
-  - Configurable notification preferences (e.g., Email, WhatsApp, SMS, Push Notifications).
-  - Notifications include details about the incident (e.g., camera ID, timestamp, behavior score).
-- *Output*:
-  - Real-time notifications sent to predefined users.
-
-  ![alt text](<Demo 1 Output.jpg>)
-
-#### *Tools*
-- Twilio or similar APIs for SMS and WhatsApp notifications.
-- PushBullet or email libraries for additional channels.
-
----
+2. **Motion Detection**:
+   - A background subtractor detects motion.
+   - If motion is detected, the system starts analyzing frames with YOLOv8.
+3. **YOLOv8 Human Detection**:
+   - The model processes frames to identify humans.
+   - We are skipping a few frames to reduce the delay in human detection caused by YOLOv8.
+   - Detects human in the frame for next 5 seconds.
+   - If a human is detected with confidence ≥ 50%, a red bounding box is drawn.
+4. **Email Alerts**:
+   - If a human is detected and the predefined waiting period, which prevents multiple consecutive alerts in a short time, has elapsed, an email is sent.
 
 
-## *Prototype Features*
+Test 1 (Video Provided) 
+![alt text](Test1.jpg)
 
-1. *Real-Time Monitoring*:
-   - Continuous processing of live camera feeds.
-   - Aggregation of frames for motion analysis.
-
-2. *Behavior Analysis*:
-   - AI model predicts the severity of behavior in real-time.
-
-3. *Trespassing Alerts*:
-   - Unauthorized motion detection triggers immediate alerts.
-
-4. *Notification System*:
-   - Configurable and reliable notification delivery through multiple channels.
-
-5. *Resource Efficiency*:
-   - Optimized to work with limited resources (e.g., offline DVRs, 720p/1080p cameras).
-
----
-
-## *Testing and Deployment*
-
-1. *Initial Testing*:
-   - Test prototype on a simulated dataset to validate functionality.
-   - Evaluate accuracy of behavior predictions and motion detection.
-
-2. *Campus Testing*:
-   - Deploy the system in a controlled environment at the college campus.
-   - Monitor system performance under real-world conditions.
-
-3. *Performance Metrics*:
-   - Behavior Analysis Model Accuracy.
-   - Trespassing Detection Precision and Recall.
-   - Notification Delivery Reliability.
-
-4. *Refinement*:
-   - Incorporate feedback from testing to improve features and performance.
-
----
-
-## *Conclusion*
-
-Using multiple frames to create a single image simplifies video analysis while conserving essential behavior data, while capturing key motion patterns. The device integrates with DVRs and avoids recording conflicts through adjustable delays. With ResNet101, it assigns behavior scores, which help authorities prioritize responses to incidents.
-
-In order to identify motion in real-time from camera feeds, the system relies on background subtraction for trespassing detection. Using pattern matching operations and validating detected contours against a size threshold, it flags only significant movements. With this approach, you can eliminate noise like small objects and find unauthorized motion accurately.
+Test 2 (Our Video)
+![alt text](Test2.jpg)
 
 
+## Key Features
 
+- **Efficient Motion Detection**: Reduces unnecessary YOLOv8 computations.
+- **Email Notifications**: Sends alerts when trespassing is detected.
 
+## Resource Requirements
 
+- **Memory Usage**: The system requires approximately **200-300** MB of memory for smooth operation.
+
+## Conclusion
+
+This project successfully detects human trespassing and sends alerts, making it useful for security applications. It balances efficiency with accuracy by combining motion detection and deep learning.
 
 

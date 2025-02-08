@@ -3,3 +3,4 @@
 yolov8n.pt
 *.c
 *.exe
+logs
