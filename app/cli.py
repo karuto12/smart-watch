@@ -4,11 +4,23 @@ import os
 
 from whatnot import login_and_save_session
 
-JSON_FILEPATH = ""
+JSON_FILEPATH = "data.json"
+
 
 def load_data():
-    with open(JSON_FILEPATH, 'r') as f:
-        return json.load(f)
+    if not os.path.exists(JSON_FILEPATH):
+        with open(JSON_FILEPATH, 'w') as f:
+            json.dump([], f)
+
+    try:
+        with open(JSON_FILEPATH, 'r') as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        # Reinitialize the file with an empty list if it's invalid
+        with open(JSON_FILEPATH, 'w') as f:
+            json.dump([], f)
+        return []
+
 
 def save_data(data):
     with open(JSON_FILEPATH, 'w') as f:
@@ -91,7 +103,7 @@ class EditCameraForm(npyscreen.ActionForm):
             cam = self.parentApp.camera_data[self.index]
             self.name.value = cam.get("name", "")
             self.link.value = cam.get("link", "")
-            self.description.value = cam.get("description", "")
+            self.description.value = cam.get("desc", "")
         else:
             self.name.value = ""
             self.link.value = ""
@@ -105,7 +117,7 @@ class EditCameraForm(npyscreen.ActionForm):
         new_data = {
             "name": self.name.value.strip(),
             "link": self.link.value.strip(),
-            "description": self.description.value.strip()
+            "desc": self.description.value.strip()
         }
 
         if self.index is not None:
@@ -164,12 +176,7 @@ class CameraApp(npyscreen.NPSAppManaged):
         self.addForm("ENV", EditEnvForm, name="Edit Environment Variables") 
 
 if __name__ == "__main__":
-    JSON_FILEPATH = "data.json"
-
-    if not os.path.exists(JSON_FILEPATH):
-        with open(JSON_FILEPATH, 'w') as f:
-            json.dump([], f)
-
+    load_data()
     app = CameraApp()
     app.run()
     from dotenv import load_dotenv

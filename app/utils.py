@@ -8,9 +8,36 @@ import os
 import numpy as np
 from json import load
 import time
+import threading
+import queue
 # import pywhatkit as kit
 
 from whatnot import send_whatsapp_message
+
+# Create a queue for email tasks
+email_queue = queue.Queue()
+
+
+def email_worker():
+    """Worker function to process email tasks from the queue."""
+    while True:
+        task = email_queue.get()
+        if task is None:  # Exit signal
+            break
+        try:
+            send_email_alert(*task)
+        except Exception as e:
+            print("Error sending email:", e)
+        email_queue.task_done()
+
+# Start the email worker thread
+email_thread = threading.Thread(target=email_worker, daemon=True)
+email_thread.start()
+
+def queue_email_alert(timestamp, camera_info, frame):
+    """Add an email alert task to the queue."""
+    email_queue.put((timestamp, camera_info, frame))
+
 
 def load_mobilenet_model():
     """
@@ -24,7 +51,6 @@ def load_mobilenet_model():
     net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
     return net
 
-    
 
 net = load_mobilenet_model()
 
@@ -57,8 +83,6 @@ def initialize_cameras(config_file):
     return caps, cams
 
 
-
-
 def send_whatsapp_alert(timestamp, camera_info, frame):
     """Send a WhatsApp alert for trespassing."""
     phone_num = os.getenv('PHONE_NUM')
@@ -83,7 +107,6 @@ def send_whatsapp_alert(timestamp, camera_info, frame):
             os.remove(temp_image_path)
     
     
-
 def send_email_alert(timestamp, camera_info, frame):
     """Send an email alert for trespassing."""
     sender_email = os.getenv('SENDER_EMAIL')
@@ -215,3 +238,9 @@ def detect_human_with_mobilenet(frame, net, confidence_threshold=0.5):
                 cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                 return True
     return False
+
+
+# Shutdown the email worker thread gracefully (call this when the program exits)
+def shutdown_email_worker():
+    email_queue.put(None)  # Send exit signal
+    email_thread.join()

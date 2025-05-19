@@ -48,8 +48,9 @@ def detect(is_show=False):
                 if human_detected and time.time() - last_trespass_alert_times[idx] >= notification_cooldown_period:
                     last_trespass_alert_times[idx] = time.time()
                     detection_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    queue_email_alert(detection_time_str, cams[idx], frames[idx])
+                    # queue_email_alert(detection_time_str, cams[idx], frames[idx])
                     send_telegram_alert(detection_time_str, cams[idx], frames[idx])
+                    print(f"Alert sent for camera {cams[idx]} at {detection_time_str}")
 
                 if time.time() - last_motion_ats[idx] > check_period:
                     has_motions[idx] = False

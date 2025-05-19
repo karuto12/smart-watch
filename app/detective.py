@@ -4,7 +4,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import sys
 
-from utils import initialize_cameras, send_email_alert, detect_motion, detect_human, arrange_frames, send_whatsapp_alert
+from utils import initialize_cameras, detect_motion, detect_human, arrange_frames, send_whatsapp_alert, shutdown_email_worker, queue_email_alert
 
 # Load environment variables
 load_dotenv()
@@ -12,7 +12,7 @@ load_dotenv()
 # Global variables
 fps = 5
 check_period = 5
-notification_cooldown_period = (60) * 3 # 3 minutes
+notification_cooldown_period = 10 # 3 minutes
 
 def detect(is_show=False):
     caps, cams = initialize_cameras('data.json')
@@ -47,7 +47,7 @@ def detect(is_show=False):
                 if human_detected and time.time() - last_trespass_alert_times[idx] >= notification_cooldown_period:
                     last_trespass_alert_times[idx] = time.time()
                     detection_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    send_email_alert(detection_time_str, cams[idx], frames[idx])
+                    queue_email_alert(detection_time_str, cams[idx], frames[idx])
                     send_whatsapp_alert(detection_time_str, cams[idx], frames[idx])
 
                 if time.time() - last_motion_ats[idx] > check_period:
@@ -77,4 +77,9 @@ if __name__ == "__main__":
         is_show = sys.argv[1].lower() == 'true'  # Second argument is whether to show frames
 
     print(f"Starting detection, Show frames: {is_show}")
-    detect(is_show=is_show)
+    try:
+        detect(is_show=is_show)
+    except KeyboardInterrupt:
+        print("Interrupted by user. Shutting down...")
+    finally:
+        shutdown_email_worker()
