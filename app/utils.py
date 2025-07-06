@@ -11,6 +11,7 @@ import time
 import threading
 import queue
 # import pywhatkit as kit
+import onnxruntime as ort
 
 from whatnot import send_whatsapp_message
 
@@ -38,6 +39,234 @@ def queue_email_alert(timestamp, camera_info, frame):
     """Add an email alert task to the queue."""
     email_queue.put((timestamp, camera_info, frame))
 
+
+def run_nanodet_onnx(image_path, model_path="nanodet_api/nanodet.onnx", score_thresh=0.5, nms_thresh=0.6):
+    """
+    Runs NanoDet ONNX inference on a single image.
+    Args:
+        image_path (str): Path to the input image.
+        model_path (str): Path to the ONNX model.
+        score_thresh (float): Detection score threshold.
+        nms_thresh (float): NMS IoU threshold.
+    Returns:
+        dict: Detection results with 'boxes', 'labels', 'scores'.
+    """
+    # Preprocess
+    INPUT_SIZE = 320
+    REG_MAX = 7
+    STRIDES = [8, 16, 32]
+    img = cv2.imread(image_path)
+    img = cv2.resize(img, (INPUT_SIZE, INPUT_SIZE))
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = img.astype(np.float32) / 255.0
+    img = np.transpose(img, (2, 0, 1))
+    img = np.expand_dims(img, axis=0).astype(np.float32)
+
+    # Inference
+    session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+    input_name = session.get_inputs()[0].name
+    outputs = session.run(None, {input_name: img})
+    outputs = outputs[0] if isinstance(outputs, (list, tuple)) else outputs
+    if outputs.ndim == 3:
+        outputs = outputs[0]
+    NUM_CLASSES = 80  # Change this if your model uses a different number of classes
+
+    # Generate center priors
+    center_priors = []
+    for stride in STRIDES:
+        feat_w = INPUT_SIZE // stride
+        feat_h = INPUT_SIZE // stride
+        for y in range(feat_h):
+            for x in range(feat_w):
+                center_priors.append([x, y, stride])
+    center_priors = np.array(center_priors, dtype=np.float32)
+
+    # Postprocess
+    cls_logits = outputs[:, :NUM_CLASSES]
+    bbox_pred = outputs[:, NUM_CLASSES:]
+    scores = 1 / (1 + np.exp(-cls_logits))  # sigmoid
+    labels = np.argmax(scores, axis=1)
+    scores = np.max(scores, axis=1)
+    keep = scores > score_thresh
+    if not np.any(keep):
+        return {"boxes": [], "labels": [], "scores": []}
+    scores = scores[keep]
+    labels = labels[keep]
+    bbox_pred = bbox_pred[keep]
+    center_priors = center_priors[keep]
+    bbox_pred = bbox_pred.reshape(-1, 4, REG_MAX + 1)
+    bbox_pred = np.exp(bbox_pred - np.max(bbox_pred, axis=2, keepdims=True))
+    bbox_pred = bbox_pred / np.sum(bbox_pred, axis=2, keepdims=True)
+    dis = np.dot(bbox_pred, np.arange(REG_MAX + 1, dtype=np.float32))
+    def distance2bbox(center, distance, max_shape=None):
+        x1 = center[:, 0] * center[:, 2] - distance[:, 0]
+        y1 = center[:, 1] * center[:, 2] - distance[:, 1]
+        x2 = center[:, 0] * center[:, 2] + distance[:, 2]
+        y2 = center[:, 1] * center[:, 2] + distance[:, 3]
+        if max_shape is not None:
+            x1 = np.clip(x1, 0, max_shape[1])
+            y1 = np.clip(y1, 0, max_shape[0])
+            x2 = np.clip(x2, 0, max_shape[1])
+            y2 = np.clip(y2, 0, max_shape[0])
+        return np.stack([x1, y1, x2, y2], axis=-1)
+    boxes = distance2bbox(center_priors, dis, max_shape=(INPUT_SIZE, INPUT_SIZE))
+    # NMS
+    def nms(boxes, scores, iou_threshold):
+        idxs = scores.argsort()[::-1]
+        keep = []
+        while idxs.size > 0:
+            i = idxs[0]
+            keep.append(i)
+            if idxs.size == 1:
+                break
+            xx1 = np.maximum(boxes[i, 0], boxes[idxs[1:], 0])
+            yy1 = np.maximum(boxes[i, 1], boxes[idxs[1:], 1])
+            xx2 = np.minimum(boxes[i, 2], boxes[idxs[1:], 2])
+            yy2 = np.minimum(boxes[i, 3], boxes[idxs[1:], 3])
+            w = np.maximum(0, xx2 - xx1)
+            h = np.maximum(0, yy2 - yy1)
+            inter = w * h
+            area1 = (boxes[i, 2] - boxes[i, 0]) * (boxes[i, 3] - boxes[i, 1])
+            area2 = (boxes[idxs[1:], 2] - boxes[idxs[1:], 0]) * (boxes[idxs[1:], 3] - boxes[idxs[1:], 1])
+            ovr = inter / (area1 + area2 - inter)
+            idxs = idxs[1:][ovr < iou_threshold]
+        return keep
+    keep_idx = nms(boxes, scores, nms_thresh)
+    boxes = boxes[keep_idx].tolist()
+    labels = labels[keep_idx].tolist()
+    scores = scores[keep_idx].tolist()
+    return {"boxes": boxes, "labels": labels, "scores": scores}
+
+def run_nanodet_onnx_batch(image_paths, model_path="nanodet_api/nanodet.onnx", score_thresh=0.5, nms_thresh=0.6, batch_size=4):
+    """
+    Runs NanoDet ONNX inference on multiple images in batches for better efficiency.
+    Args:
+        image_paths (list): List of paths to input images.
+        model_path (str): Path to the ONNX model.
+        score_thresh (float): Detection score threshold.
+        nms_thresh (float): NMS IoU threshold.
+        batch_size (int): Number of images to process in each batch.
+    Returns:
+        list: List of detection results, each with 'boxes', 'labels', 'scores'.
+    """
+    INPUT_SIZE = 320
+    REG_MAX = 7
+    STRIDES = [8, 16, 32]
+    NUM_CLASSES = 80  # Change this if your model uses a different number of classes
+    
+    # Generate center priors (only once)
+    center_priors = []
+    for stride in STRIDES:
+        feat_w = INPUT_SIZE // stride
+        feat_h = INPUT_SIZE // stride
+        for y in range(feat_h):
+            for x in range(feat_w):
+                center_priors.append([x, y, stride])
+    center_priors = np.array(center_priors, dtype=np.float32)
+    
+    # Initialize ONNX session
+    session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+    input_name = session.get_inputs()[0].name
+    
+    def preprocess_batch(image_paths_batch):
+        """Preprocess a batch of images."""
+        batch_imgs = []
+        for img_path in image_paths_batch:
+            img = cv2.imread(img_path)
+            if img is None:
+                # Return zero image if file not found
+                img = np.zeros((INPUT_SIZE, INPUT_SIZE, 3), dtype=np.uint8)
+            img = cv2.resize(img, (INPUT_SIZE, INPUT_SIZE))
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = img.astype(np.float32) / 255.0
+            img = np.transpose(img, (2, 0, 1))
+            batch_imgs.append(img)
+        return np.array(batch_imgs, dtype=np.float32)
+    
+    def postprocess_single(outputs, center_priors, score_thresh, nms_thresh):
+        """Postprocess outputs for a single image."""
+        if outputs.ndim == 3:
+            outputs = outputs[0]
+        
+        cls_logits = outputs[:, :NUM_CLASSES]
+        bbox_pred = outputs[:, NUM_CLASSES:]
+        scores = 1 / (1 + np.exp(-cls_logits))  # sigmoid
+        labels = np.argmax(scores, axis=1)
+        scores = np.max(scores, axis=1)
+        keep = scores > score_thresh
+        if not np.any(keep):
+            return {"boxes": [], "labels": [], "scores": []}
+        
+        scores = scores[keep]
+        labels = labels[keep]
+        bbox_pred = bbox_pred[keep]
+        center_priors_keep = center_priors[keep]
+        bbox_pred = bbox_pred.reshape(-1, 4, REG_MAX + 1)
+        bbox_pred = np.exp(bbox_pred - np.max(bbox_pred, axis=2, keepdims=True))
+        bbox_pred = bbox_pred / np.sum(bbox_pred, axis=2, keepdims=True)
+        dis = np.dot(bbox_pred, np.arange(REG_MAX + 1, dtype=np.float32))
+        
+        def distance2bbox(center, distance, max_shape=None):
+            x1 = center[:, 0] * center[:, 2] - distance[:, 0]
+            y1 = center[:, 1] * center[:, 2] - distance[:, 1]
+            x2 = center[:, 0] * center[:, 2] + distance[:, 2]
+            y2 = center[:, 1] * center[:, 2] + distance[:, 3]
+            if max_shape is not None:
+                x1 = np.clip(x1, 0, max_shape[1])
+                y1 = np.clip(y1, 0, max_shape[0])
+                x2 = np.clip(x2, 0, max_shape[1])
+                y2 = np.clip(y2, 0, max_shape[0])
+            return np.stack([x1, y1, x2, y2], axis=-1)
+        
+        boxes = distance2bbox(center_priors_keep, dis, max_shape=(INPUT_SIZE, INPUT_SIZE))
+        
+        # NMS
+        def nms(boxes, scores, iou_threshold):
+            idxs = scores.argsort()[::-1]
+            keep = []
+            while idxs.size > 0:
+                i = idxs[0]
+                keep.append(i)
+                if idxs.size == 1:
+                    break
+                xx1 = np.maximum(boxes[i, 0], boxes[idxs[1:], 0])
+                yy1 = np.maximum(boxes[i, 1], boxes[idxs[1:], 1])
+                xx2 = np.minimum(boxes[i, 2], boxes[idxs[1:], 2])
+                yy2 = np.minimum(boxes[i, 3], boxes[idxs[1:], 3])
+                w = np.maximum(0, xx2 - xx1)
+                h = np.maximum(0, yy2 - yy1)
+                inter = w * h
+                area1 = (boxes[i, 2] - boxes[i, 0]) * (boxes[i, 3] - boxes[i, 1])
+                area2 = (boxes[idxs[1:], 2] - boxes[idxs[1:], 0]) * (boxes[idxs[1:], 3] - boxes[idxs[1:], 1])
+                ovr = inter / (area1 + area2 - inter)
+                idxs = idxs[1:][ovr < iou_threshold]
+            return keep
+        
+        keep_idx = nms(boxes, scores, nms_thresh)
+        boxes = boxes[keep_idx].tolist()
+        labels = labels[keep_idx].tolist()
+        scores = scores[keep_idx].tolist()
+        return {"boxes": boxes, "labels": labels, "scores": scores}
+    
+    # Process images in batches
+    all_results = []
+    for i in range(0, len(image_paths), batch_size):
+        batch_paths = image_paths[i:i + batch_size]
+        batch_imgs = preprocess_batch(batch_paths)
+        
+        # Run inference
+        outputs = session.run(None, {input_name: batch_imgs})
+        outputs = outputs[0] if isinstance(outputs, (list, tuple)) else outputs
+        
+        # Postprocess each image in the batch
+        for j in range(len(batch_paths)):
+            if j < outputs.shape[0]:
+                result = postprocess_single(outputs[j], center_priors, score_thresh, nms_thresh)
+            else:
+                result = {"boxes": [], "labels": [], "scores": []}
+            all_results.append(result)
+    
+    return all_results
 
 def load_mobilenet_model():
     """
