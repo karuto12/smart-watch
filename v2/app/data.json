@@ -1,0 +1,12 @@
+[
+    {
+        "name": "webcam",
+        "link": "0",
+        "desc": "laptop camera"
+    },
+    {
+        "name": "ipwebcam",
+        "link": "http://192.0.0.4:8080",
+        "desc": "redmi phone"
+    }
+]
