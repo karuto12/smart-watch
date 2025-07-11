@@ -3,15 +3,20 @@ import cv2
 import time
 
 def initialize_cameras(cameras):
-    """Initializes video captures for each camera."""
+    """Initializes video captures for each camera, selecting the appropriate backend."""
     caps = []
     for cam in cameras:
         link = cam.get('link')
+        cap = None
+
         if isinstance(link, str) and link.isdigit():
-            link = int(link)
-        
-        cap = cv2.VideoCapture(link, cv2.CAP_FFMPEG)
-        if not cap.isOpened():
+            # For local webcams on Linux (including Raspberry Pi), use the V4L2 backend.
+            cap = cv2.VideoCapture(int(link), cv2.CAP_V4L2)
+        elif isinstance(link, str):
+            # For network streams, FFMPEG is generally the right choice.
+            cap = cv2.VideoCapture(link, cv2.CAP_FFMPEG)
+
+        if cap and not cap.isOpened():
             print(f"Error: Could not open camera {cam.get('name')}.")
             caps.append(None)
         else:
