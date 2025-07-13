@@ -3,3 +3,4 @@ numpy
 opencv-python
 python-dotenv
 python-telegram-bot
+coloredlogs
