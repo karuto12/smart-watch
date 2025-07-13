@@ -10,6 +10,7 @@ from video_stream import VideoStream
 from detection import DetectionProcessor
 from notifications import NotificationManager
 from utils import arrange_frames
+from cli import CameraApp
 
 def detection_worker(config, notification_queue, frame_queue, shared_last_alert_times):
     """Worker function for the detection process pool."""
@@ -32,8 +33,14 @@ def main(show_frames=False):
     cameras = load_cameras()
 
     if not cameras:
-        logging.warning("No cameras configured. Please run the CLI to add cameras.")
-        return
+        logging.warning("No cameras configured. Launching Camera Manager CLI...")
+        cli_app = CameraApp()
+        cli_app.run()
+        # After CLI closes, try loading cameras again
+        cameras = load_cameras()
+        if not cameras:
+            logging.info("No cameras were added. Exiting application.")
+            return
 
     # Create shared queues
     manager = Manager()
